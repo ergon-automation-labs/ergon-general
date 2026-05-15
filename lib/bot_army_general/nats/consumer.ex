@@ -1,45 +1,51 @@
 defmodule BotArmyGeneral.NATS.Consumer do
   @moduledoc """
-  NATS consumer: fleet-wide filesystem skills (`priv/skills/*.md`).
+  NATS consumer for the general-purpose orchestrator bot.
+
+  - `bot_army.general_purpose.ask` — discover skills, suggest installs, LLM answer
+  - `bot_army.general_purpose.operator.complete` — PARA + notification intent
+
+  Deprecated (one release): `bot_army.general.operator.complete`
   """
 
   use GenServer
   require Logger
 
-  alias BotArmyGeneral.Handlers.OperatorNotifyHandler
-  alias BotArmyGeneral.Handlers.SkillsHandler
+  alias BotArmyGeneral.Handlers.{AskHandler, OperatorNotifyHandler}
 
   @reconnect_delay_ms 5_000
   @version Mix.Project.config()[:version]
   @registry_heartbeat_ms 20_000
-  @health_subject "system.health.bot_army_general"
+  @health_subject "system.health.bot_army_general_purpose"
   @health_interval_ms 30_000
-  @list_subject "bot_army.general.skill.list"
-  @get_subject "bot_army.general.skill.get"
-  @complete_subject "bot_army.general.operator.complete"
+  @ask_subject "bot_army.general_purpose.ask"
+  @complete_subject "bot_army.general_purpose.operator.complete"
+  @legacy_complete_subject "bot_army.general.operator.complete"
 
   @subjects [
     %{
-      subject: @list_subject,
+      subject: @ask_subject,
       type: :request_reply,
-      description: "List base markdown skills shipped with the general bot"
-    },
-    %{
-      subject: @get_subject,
-      type: :request_reply,
-      description: "Fetch one base skill by slug (markdown body + frontmatter)"
+      description: "General-purpose ask (skills discovery + LLM)"
     },
     %{
       subject: @complete_subject,
       type: :request_reply,
-      description: "PARA capture + notification intent after operator/skill work"
+      description: "PARA capture + notification intent after operator work"
+    },
+    %{
+      subject: @legacy_complete_subject,
+      type: :request_reply,
+      description: "Deprecated alias for operator.complete"
     },
     %{
       subject: @health_subject,
       type: :publish,
-      description: "General bot health pulse"
+      description: "General-purpose bot health pulse"
     }
   ]
+
+  @subscribe_subjects [@ask_subject, @complete_subject, @legacy_complete_subject]
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -52,16 +58,16 @@ defmodule BotArmyGeneral.NATS.Consumer do
       {:ok, conn} ->
         BotArmyRuntime.NATS.Connection.subscribe_to_status()
 
-        case subscribe_all(conn, [@list_subject, @get_subject, @complete_subject]) do
+        case subscribe_all(conn, @subscribe_subjects) do
           {:ok, subs} ->
-            BotArmyRuntime.Registry.register("bot_army_general", @subjects, @version)
+            BotArmyRuntime.Registry.register("bot_army_general_purpose", @subjects, @version)
             Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
             Process.send_after(self(), :publish_health, 1_000)
-            Logger.info("[General] Subscribed to skill + operator.complete subjects")
+            Logger.info("[GeneralPurpose] Subscribed to ask + operator.complete")
             {:noreply, %{state | subscriptions: subs}}
 
           {:error, subject, reason} ->
-            Logger.error("[General] Subscribe failed #{subject}: #{inspect(reason)}")
+            Logger.error("[GeneralPurpose] Subscribe failed #{subject}: #{inspect(reason)}")
             Process.send_after(self(), :reconnect, @reconnect_delay_ms)
             {:noreply, state}
         end
@@ -85,7 +91,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
   @impl true
   def handle_info(:registry_heartbeat, state) do
     if state.subscriptions != [] do
-      BotArmyRuntime.Registry.register("bot_army_general", @subjects, @version)
+      BotArmyRuntime.Registry.register("bot_army_general_purpose", @subjects, @version)
       Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
     end
 
@@ -97,11 +103,11 @@ defmodule BotArmyGeneral.NATS.Consumer do
     BotArmyRuntime.Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers, []), fn ->
       try do
         query = decode_body(msg.body)
-        response = dispatch(msg.topic, query)
+        response = dispatch(msg.topic, query) |> maybe_deprecate(msg.topic)
         maybe_reply(msg.reply_to, response)
       rescue
         e ->
-          Logger.warning("[General] Request failed: #{inspect(e)}")
+          Logger.warning("[GeneralPurpose] Request failed: #{inspect(e)}")
           maybe_reply(msg.reply_to, %{"error" => "handler_failed"})
       end
     end)
@@ -109,17 +115,27 @@ defmodule BotArmyGeneral.NATS.Consumer do
     {:noreply, state}
   end
 
-  defp dispatch(@list_subject, query), do: SkillsHandler.handle_list(query)
-  defp dispatch(@get_subject, query), do: SkillsHandler.handle_get(query)
-  defp dispatch(@complete_subject, query), do: OperatorNotifyHandler.handle_complete(query)
+  defp dispatch(@ask_subject, query), do: AskHandler.handle_ask(query)
+
+  defp dispatch(subject, query)
+       when subject in [@complete_subject, @legacy_complete_subject],
+       do: OperatorNotifyHandler.handle_complete(query)
+
   defp dispatch(_, _), do: %{"error" => "unknown_subject"}
+
+  defp maybe_deprecate(response, @legacy_complete_subject) when is_map(response) do
+    Map.put(response, "deprecated_subject", @legacy_complete_subject)
+    |> Map.put("use_subject", @complete_subject)
+  end
+
+  defp maybe_deprecate(response, _), do: response
 
   defp subscribe_all(_conn, []), do: {:ok, []}
 
   defp subscribe_all(conn, [subject | rest]) do
     case Gnat.sub(conn, self(), subject) do
       {:ok, sub} ->
-        Logger.info("[General] Subscribed to #{subject}")
+        Logger.info("[GeneralPurpose] Subscribed to #{subject}")
 
         case subscribe_all(conn, rest) do
           {:ok, subs} ->
@@ -152,7 +168,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
 
   defp build_health_payload do
     %{
-      service: "bot_army_general",
+      service: "bot_army_general_purpose",
       status: "ok",
       timestamp: DateTime.utc_now() |> DateTime.to_iso8601()
     }

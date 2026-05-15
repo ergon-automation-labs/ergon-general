@@ -1,42 +1,32 @@
 # bot_army_general
 
-Fleet-wide **general-purpose** bot: serves **base markdown skills** from `priv/skills/*.md` over NATS (no database).
+**General-purpose orchestrator** for the Bot Army: out-of-domain asks (skills discovery + LLM) and operator close-out (PARA + notification).
 
-## NATS subjects
+Registry id: **`bot_army_general_purpose`**.
 
-| Subject | Mode | Body (JSON) | Response |
-|---------|------|---------------|----------|
-| `bot_army.general.skill.list` | request/reply | `{}` (optional) | `{"skills":[%{slug,name,description},...]}` |
-| `bot_army.general.skill.get` | request/reply | `{"slug":"playwright_operator"}` | `slug`, `frontmatter`, `markdown` or `error` |
-| `bot_army.general.operator.complete` | request/reply | see below | PARA capture + notification intent |
-| `system.health.bot_army_general` | publish | — | JSON health pulse |
+## Skills platform (not in this repo)
 
-### Operator complete (PARA + Discord path)
+Fleet markdown: `bot_army_skills/priv/canonical_skills/*.md` → Postgres → `skills_bot`.
 
-After using a skill, call **`bot_army.general.operator.complete`** so the fleet records human review and notifies you:
+| Action | NATS |
+|--------|------|
+| List / read | `bot.army.skills.content.list`, `bot.army.skills.content.get` |
+| Suggest installs | `bot.army.skills.catalog.suggest` |
+| Run skill | `bot.army.skills.command.<slug>` |
 
-```json
-{
-  "slug": "playwright_operator",
-  "summary": "Playwright smoke passed",
-  "details": "optional longer text",
-  "priority": "normal",
-  "para_capture": true,
-  "notify_discord": true
-}
-```
+## NATS subjects (this bot)
 
-- **PARA:** `para.capture.append` → `inbox/bots/general.md` (para bot / personal_os).
-- **Discord:** publishes `synapse.intent.notification.request` → notification router (respects quiet hours).
+| Subject | Purpose |
+|---------|---------|
+| `bot_army.general_purpose.ask` | Discover installed skills, suggest missing, LLM answer |
+| `bot_army.general_purpose.operator.complete` | PARA `inbox/bots/general_purpose.md` + notification intent |
+| `bot_army.general.operator.complete` | Deprecated alias |
+| `system.health.bot_army_general_purpose` | Health pulse |
 
-Monorepo flow doc: `docs/GENERAL_BOT_OPERATOR_FLOW.md` in **elixir_bots**. CLI: `scripts/general_operator_complete.py`.
+## Release
 
-Registry id: **`bot_army_general`**.
-
-## OTP release
-
-- Release name: `general_bot`
-- Tarball pattern: `general_bot-VERSION.tar.gz`
+- Primary: **`general_purpose_bot`** (`general_purpose_bot-VERSION.tar.gz`)
+- Alias: `general_bot` (same app, transitional)
 
 ## Local
 
@@ -45,14 +35,4 @@ make deps
 make test
 ```
 
-Run the release (with NATS + `bot_army_runtime` connection as for other bots).
-
-## Configuration
-
-- `config :bot_army_general, :skills_root, "/path/to/skills"` — override directory (tests use this).
-
-## Where this repo lives (Bot Army layout)
-
-This app is a **separate git repository**, not committed inside the `elixir_bots` monorepo. The usual layout is a real checkout under **`../bots/bot_army_general`** next to the monorepo (see **`clone_base_bots`** in the monorepo’s `config/repos.toml`), with an optional symlink **`elixir_bots/bot_army_general` → `../bots/bot_army_general`** so tools see one workspace.
-
-Step-by-step onboarding and symlink repair: **`docs/ONBOARDING.md`** and **`docs/WORKSPACE_SETUP.md`** in the **elixir_bots** repository.
+Monorepo: `docs/GENERAL_BOT_OPERATOR_FLOW.md`, `scripts/general_operator_complete.py`.

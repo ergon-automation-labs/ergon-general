@@ -14,7 +14,7 @@ defmodule BotArmyGeneral.OperatorNotifyTest do
       })
 
     assert p["schema_version"] == "1.0"
-    assert p["source_bot"] == "general"
+    assert p["source_bot"] == "general_purpose"
     assert p["summary"] == "Browser run done"
     assert p["details"] =~ "playwright_operator"
     assert p["details"] =~ "Passed smoke test."
@@ -28,10 +28,10 @@ defmodule BotArmyGeneral.OperatorNotifyTest do
         "priority" => "normal"
       })
 
-    assert p["signal_type"] == "general_operator_complete"
-    assert p["intent"]["domain"] == "general"
+    assert p["signal_type"] == "general_purpose_operator_complete"
+    assert p["intent"]["domain"] == "general_purpose"
     assert p["intent"]["requires_notification_router_delivery"] == true
-    assert p["data"]["para_inbox"] == "inbox/bots/general.md"
+    assert p["data"]["para_inbox"] == "inbox/bots/general_purpose.md"
     assert p["intent"]["delivery_policy"]["fallback_order"] == ["discord", "synapse_chat"]
   end
 

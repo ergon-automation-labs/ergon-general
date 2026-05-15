@@ -1,7 +1,7 @@
 defmodule BotArmyGeneral.OperatorNotify do
   @moduledoc """
-  After an operator or agent finishes work with a fleet skill, optionally:
-  - append a line to PARA `inbox/bots/general.md` via `para.capture.append`
+  After an operator or agent finishes work, optionally:
+  - append a line to PARA `inbox/bots/general_purpose.md` via `para.capture.append`
   - publish `synapse.intent.notification.request` for Notification Router → Discord
   """
 
@@ -51,7 +51,7 @@ defmodule BotArmyGeneral.OperatorNotify do
     slug = string_field(payload, "slug")
     summary = string_field(payload, "summary") || default_summary(slug)
     details = string_field(payload, "details") || ""
-    topic = string_field(payload, "topic") || "general_skill"
+    topic = string_field(payload, "topic") || "general_purpose"
     task_id = string_field(payload, "task_id")
 
     base_details =
@@ -63,7 +63,7 @@ defmodule BotArmyGeneral.OperatorNotify do
 
     %{
       "schema_version" => @schema_version,
-      "source_bot" => "general",
+      "source_bot" => "general_purpose",
       "summary" => summary,
       "details" => String.trim(base_details),
       "topic" => topic,
@@ -77,19 +77,19 @@ defmodule BotArmyGeneral.OperatorNotify do
     slug = string_field(payload, "slug")
     summary = string_field(payload, "summary") || default_summary(slug)
     details = string_field(payload, "details") || ""
-    topic = string_field(payload, "topic") || "general_skill"
+    topic = string_field(payload, "topic") || "general_purpose"
     priority = normalize_priority(Map.get(payload, "priority", "normal"))
     status = string_field(payload, "status") || "complete"
     now = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
     %{
-      "signal_type" => "general_operator_complete",
+      "signal_type" => "general_purpose_operator_complete",
       "schema_version" => @schema_version,
       "timestamp" => now,
       "status" => status,
       "intent" => %{
         "intent_type" => "operator_update",
-        "domain" => "general",
+        "domain" => "general_purpose",
         "topic" => topic,
         "priority" => priority,
         "requires_context_broker_routing" => true,
@@ -105,8 +105,8 @@ defmodule BotArmyGeneral.OperatorNotify do
         "summary" => summary,
         "details" => details,
         "skill_slug" => slug,
-        "source_bot" => "bot_army_general",
-        "para_inbox" => "inbox/bots/general.md"
+        "source_bot" => "bot_army_general_purpose",
+        "para_inbox" => "inbox/bots/general_purpose.md"
       }
     }
     |> drop_nil_values()
@@ -159,9 +159,9 @@ defmodule BotArmyGeneral.OperatorNotify do
     end
   end
 
-  defp default_summary(nil), do: "General bot operator update"
-  defp default_summary(""), do: "General bot operator update"
-  defp default_summary(slug), do: "General skill: #{slug}"
+  defp default_summary(nil), do: "General-purpose operator update"
+  defp default_summary(""), do: "General-purpose operator update"
+  defp default_summary(slug), do: "General-purpose skill: #{slug}"
 
   defp normalize_priority(p) when p in ["low", "normal", "medium", "high"], do: p
   defp normalize_priority("urgent"), do: "high"

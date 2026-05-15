@@ -4,10 +4,10 @@ MIX ?= mix
 .PHONY: setup help deps test format clean release publish-release setup-hooks push-and-publish logs
 
 help:
-	@echo "Bot Army — General (fleet filesystem skills)"
+	@echo "Bot Army — General-purpose orchestrator"
 	@echo "  make setup    - deps + git hooks"
 	@echo "  make test"
-	@echo "  make release  - prod release (general_bot)"
+	@echo "  make release  - prod release (general_purpose_bot)"
 
 setup: deps setup-hooks
 	@echo "✓ Setup complete"
@@ -30,15 +30,15 @@ clean:
 	rm -rf _build cover
 
 release: deps test
-	rm -rf _build/prod/rel/general_bot
-	MIX_ENV=prod $(MIX) release
-	@echo "✓ Release: _build/prod/rel/general_bot/"
+	rm -rf _build/prod/rel/general_purpose_bot
+	MIX_ENV=prod $(MIX) release general_purpose_bot
+	@echo "✓ Release: _build/prod/rel/general_purpose_bot/"
 
 publish-release: release
 	@set -e; \
 	VERSION=$$(sed -n 's/^[[:space:]]*version:[[:space:]]*"\([^"]*\)".*/\1/p' mix.exs | head -n 1); \
-	TARBALL="general_bot-$$VERSION.tar.gz"; \
-	tar -czf "$$TARBALL" -C _build/prod/rel general_bot/; \
+	TARBALL="general_purpose_bot-$$VERSION.tar.gz"; \
+	tar -czf "$$TARBALL" -C _build/prod/rel general_purpose_bot/; \
 	echo "Created $$TARBALL"; \
 	if command -v gh >/dev/null 2>&1; then \
 	  if gh release view "v$$VERSION" >/dev/null 2>&1; then \
@@ -46,7 +46,7 @@ publish-release: release
 	  else \
 	    gh release create "v$$VERSION" "$$TARBALL" \
 	      --title "Release v$$VERSION" \
-	      --notes "bot_army_general v$$VERSION — NATS skill.list / skill.get"; \
+	      --notes "bot_army_general v$$VERSION — general_purpose.ask + operator.complete"; \
 	  fi; \
 	else \
 	  echo "gh not installed; tarball only: $$TARBALL"; \
