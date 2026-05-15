@@ -107,7 +107,7 @@ defmodule BotArmyGeneral.AskOrchestrator do
 
         case SkillsClient.get_skill(tenant_id, slug) do
           {:ok, %{"markdown" => md}} when is_binary(md) ->
-            part = "## Skill: #{slug}\n\n#{String.slice(md, 0, 4000)}"
+            part = "## Skill: #{slug}\n\n#{String.slice(md, 0, 1500)}"
             acts = maybe_invoke(tenant_id, user_id, slug, user_query, md, auto_invoke, acts)
             {[part | parts], acts}
 
@@ -186,6 +186,7 @@ defmodule BotArmyGeneral.AskOrchestrator do
 
     suggest_lines =
       (Map.get(suggestions, "suggestions", []) || [])
+      |> Enum.take(3)
       |> Enum.map(fn s ->
         "- #{s["slug"]}: #{s["description"] || ""} (install: #{s["install_hint"] || "skills_bot migration/seed"})"
       end)
@@ -213,16 +214,13 @@ defmodule BotArmyGeneral.AskOrchestrator do
       - Do not claim you ran Playwright or booked a flight unless tool output says so.
     """
 
-    body = %{
-      "event" => @llm_subject,
-      "event_id" => BotArmyGeneral.UUID.v4(),
-      "schema_version" => "1.0",
-      "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "source" => "bot_army_general_purpose",
-      "payload" => %{"text" => prompt, "model" => model, "prompt_id" => BotArmyGeneral.UUID.v4()}
+    llm_payload = %{
+      "text" => String.trim(prompt),
+      "model" => model,
+      "prompt_id" => BotArmyGeneral.UUID.v4()
     }
 
-    case Publisher.request(@llm_subject, body, timeout_ms: timeout) do
+    case Publisher.request(@llm_subject, llm_payload, timeout_ms: timeout) do
       {:ok, %{"completion" => c}} when is_binary(c) ->
         {:ok, c}
 

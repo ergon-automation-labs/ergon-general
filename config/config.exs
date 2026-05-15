@@ -4,4 +4,5 @@ import Config
 config :bot_army_general,
   operator_notify_enabled: true,
   para_capture_timeout_ms: 5_000,
-  ask_llm_timeout_ms: 120_000
+  ask_llm_timeout_ms: 120_000,
+  ask_default_model: "ministral-3:3b"
