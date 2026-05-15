@@ -33,7 +33,8 @@ defmodule BotArmyGeneral.AskOrchestrator do
            {:ok, matched} <- pick_skills(user_query, installed),
            {:ok, skill_context, actions} <-
              build_skill_context(tenant_id, user_id, matched, user_query, auto_invoke),
-           {:ok, answer} <- llm_answer(user_query, installed, suggestions, skill_context, query) do
+           {:ok, answer} <-
+             llm_answer(user_query, matched, installed, suggestions, skill_context, query) do
         {:ok,
          %{
            "ok" => true,
@@ -171,11 +172,15 @@ defmodule BotArmyGeneral.AskOrchestrator do
       String.contains?(markdown, "llm_hint:none")
   end
 
-  defp llm_answer(user_query, installed, suggestions, skill_context, query) do
+  defp llm_answer(user_query, matched, _installed, suggestions, skill_context, query) do
     timeout = Application.get_env(:bot_army_general, :ask_llm_timeout_ms, @default_llm_timeout_ms)
 
+    model =
+      Map.get(query, "model") ||
+        Application.get_env(:bot_army_general, :ask_default_model, "auto")
+
     installed_lines =
-      installed
+      matched
       |> Enum.map(fn s -> "- #{s["slug"]}: #{s["description"] || "(no description)"}" end)
       |> Enum.join("\n")
 
@@ -214,7 +219,7 @@ defmodule BotArmyGeneral.AskOrchestrator do
       "schema_version" => "1.0",
       "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "source" => "bot_army_general_purpose",
-      "payload" => %{"text" => prompt, "model" => Map.get(query, "model", "auto")}
+      "payload" => %{"text" => prompt, "model" => model, "prompt_id" => BotArmyGeneral.UUID.v4()}
     }
 
     case Publisher.request(@llm_subject, body, timeout_ms: timeout) do
