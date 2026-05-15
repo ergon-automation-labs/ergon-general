@@ -8,7 +8,28 @@ Fleet-wide **general-purpose** bot: serves **base markdown skills** from `priv/s
 |---------|------|---------------|----------|
 | `bot_army.general.skill.list` | request/reply | `{}` (optional) | `{"skills":[%{slug,name,description},...]}` |
 | `bot_army.general.skill.get` | request/reply | `{"slug":"playwright_operator"}` | `slug`, `frontmatter`, `markdown` or `error` |
+| `bot_army.general.operator.complete` | request/reply | see below | PARA capture + notification intent |
 | `system.health.bot_army_general` | publish | — | JSON health pulse |
+
+### Operator complete (PARA + Discord path)
+
+After using a skill, call **`bot_army.general.operator.complete`** so the fleet records human review and notifies you:
+
+```json
+{
+  "slug": "playwright_operator",
+  "summary": "Playwright smoke passed",
+  "details": "optional longer text",
+  "priority": "normal",
+  "para_capture": true,
+  "notify_discord": true
+}
+```
+
+- **PARA:** `para.capture.append` → `inbox/bots/general.md` (para bot / personal_os).
+- **Discord:** publishes `synapse.intent.notification.request` → notification router (respects quiet hours).
+
+Monorepo flow doc: `docs/GENERAL_BOT_OPERATOR_FLOW.md` in **elixir_bots**. CLI: `scripts/general_operator_complete.py`.
 
 Registry id: **`bot_army_general`**.
 

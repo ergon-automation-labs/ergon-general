@@ -6,6 +6,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
   use GenServer
   require Logger
 
+  alias BotArmyGeneral.Handlers.OperatorNotifyHandler
   alias BotArmyGeneral.Handlers.SkillsHandler
 
   @reconnect_delay_ms 5_000
@@ -15,6 +16,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
   @health_interval_ms 30_000
   @list_subject "bot_army.general.skill.list"
   @get_subject "bot_army.general.skill.get"
+  @complete_subject "bot_army.general.operator.complete"
 
   @subjects [
     %{
@@ -26,6 +28,11 @@ defmodule BotArmyGeneral.NATS.Consumer do
       subject: @get_subject,
       type: :request_reply,
       description: "Fetch one base skill by slug (markdown body + frontmatter)"
+    },
+    %{
+      subject: @complete_subject,
+      type: :request_reply,
+      description: "PARA capture + notification intent after operator/skill work"
     },
     %{
       subject: @health_subject,
@@ -45,25 +52,16 @@ defmodule BotArmyGeneral.NATS.Consumer do
       {:ok, conn} ->
         BotArmyRuntime.NATS.Connection.subscribe_to_status()
 
-        case Gnat.sub(conn, self(), @list_subject) do
-          {:ok, sub1} ->
-            case Gnat.sub(conn, self(), @get_subject) do
-              {:ok, sub2} ->
-                BotArmyRuntime.Registry.register("bot_army_general", @subjects, @version)
-                Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
-                Process.send_after(self(), :publish_health, 1_000)
-                Logger.info("[General] Subscribed to #{@list_subject} and #{@get_subject}")
-                {:noreply, %{state | subscriptions: [sub1, sub2]}}
+        case subscribe_all(conn, [@list_subject, @get_subject, @complete_subject]) do
+          {:ok, subs} ->
+            BotArmyRuntime.Registry.register("bot_army_general", @subjects, @version)
+            Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
+            Process.send_after(self(), :publish_health, 1_000)
+            Logger.info("[General] Subscribed to skill + operator.complete subjects")
+            {:noreply, %{state | subscriptions: subs}}
 
-              {:error, reason2} ->
-                Logger.error("[General] Subscribe failed #{@get_subject}: #{inspect(reason2)}")
-                Gnat.unsub(conn, @list_subject)
-                Process.send_after(self(), :reconnect, @reconnect_delay_ms)
-                {:noreply, state}
-            end
-
-          {:error, reason1} ->
-            Logger.error("[General] Subscribe failed #{@list_subject}: #{inspect(reason1)}")
+          {:error, subject, reason} ->
+            Logger.error("[General] Subscribe failed #{subject}: #{inspect(reason)}")
             Process.send_after(self(), :reconnect, @reconnect_delay_ms)
             {:noreply, state}
         end
@@ -113,7 +111,29 @@ defmodule BotArmyGeneral.NATS.Consumer do
 
   defp dispatch(@list_subject, query), do: SkillsHandler.handle_list(query)
   defp dispatch(@get_subject, query), do: SkillsHandler.handle_get(query)
+  defp dispatch(@complete_subject, query), do: OperatorNotifyHandler.handle_complete(query)
   defp dispatch(_, _), do: %{"error" => "unknown_subject"}
+
+  defp subscribe_all(_conn, []), do: {:ok, []}
+
+  defp subscribe_all(conn, [subject | rest]) do
+    case Gnat.sub(conn, self(), subject) do
+      {:ok, sub} ->
+        Logger.info("[General] Subscribed to #{subject}")
+
+        case subscribe_all(conn, rest) do
+          {:ok, subs} ->
+            {:ok, [sub | subs]}
+
+          {:error, failed_subject, reason} ->
+            Gnat.unsub(conn, subject)
+            {:error, failed_subject, reason}
+        end
+
+      {:error, reason} ->
+        {:error, subject, reason}
+    end
+  end
 
   defp decode_body(body) when is_binary(body) do
     case Jason.decode(body) do
