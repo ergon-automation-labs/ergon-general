@@ -5,7 +5,7 @@ defmodule BotArmyGeneral.AskOrchestrator do
 
   require Logger
 
-  alias BotArmyGeneral.SkillsClient
+  alias BotArmyGeneral.{McpSandbox, SkillsClient}
   alias BotArmyRuntime.NATS.Publisher
 
   @llm_subject "llm.prompt.submit"
@@ -28,13 +28,23 @@ defmodule BotArmyGeneral.AskOrchestrator do
       user_id = string_field(query, "user_id") || "general-purpose-user"
       auto_invoke = truthy?(Map.get(query, "auto_invoke_skill", false))
 
+      mcp_tools = fetch_mcp_tools()
+
       with {:ok, installed} <- fetch_installed(tenant_id),
            {:ok, suggestions} <- fetch_suggestions(tenant_id, user_query),
            {:ok, matched} <- pick_skills(user_query, installed),
            {:ok, skill_context, actions} <-
              build_skill_context(tenant_id, user_id, matched, user_query, auto_invoke),
            {:ok, answer} <-
-             llm_answer(user_query, matched, installed, suggestions, skill_context, query) do
+             llm_answer(
+               user_query,
+               matched,
+               installed,
+               suggestions,
+               skill_context,
+               mcp_tools,
+               query
+             ) do
         {:ok,
          %{
            "ok" => true,
@@ -42,9 +52,31 @@ defmodule BotArmyGeneral.AskOrchestrator do
            "tenant_id" => tenant_id,
            "matched_skills" => Enum.map(matched, & &1["slug"]),
            "suggested_installs" => Map.get(suggestions, "suggestions", []),
-           "actions" => actions
+           "actions" => actions,
+           "mcp_tools_available" => length(mcp_tools)
          }}
       else
+        {:error, {:installed_list_failed, _reason}} ->
+          Logger.warning("[GeneralPurpose] skills unavailable, falling back to direct LLM")
+
+          with {:ok, answer} <-
+                 llm_answer(user_query, [], [], %{"suggestions" => []}, "", mcp_tools, query) do
+            {:ok,
+             %{
+               "ok" => true,
+               "answer" => answer,
+               "tenant_id" => tenant_id,
+               "matched_skills" => [],
+               "suggested_installs" => [],
+               "actions" => [%{"type" => "fallback", "note" => "skills_bot unavailable"}],
+               "mcp_tools_available" => length(mcp_tools)
+             }}
+          else
+            {:error, llm_reason} ->
+              Logger.warning("[GeneralPurpose] LLM fallback failed: #{inspect(llm_reason)}")
+              {:ok, %{"ok" => false, "error" => inspect(llm_reason)}}
+          end
+
         {:error, reason} ->
           Logger.warning("[GeneralPurpose] ask failed: #{inspect(reason)}")
           {:ok, %{"ok" => false, "error" => inspect(reason)}}
@@ -172,7 +204,14 @@ defmodule BotArmyGeneral.AskOrchestrator do
       String.contains?(markdown, "llm_hint:none")
   end
 
-  defp llm_answer(user_query, matched, _installed, suggestions, skill_context, query) do
+  defp fetch_mcp_tools do
+    case McpSandbox.list_allowed_tools() do
+      {:ok, tools} -> tools
+      {:error, _} -> []
+    end
+  end
+
+  defp llm_answer(user_query, matched, _installed, suggestions, skill_context, mcp_tools, query) do
     timeout = Application.get_env(:bot_army_general, :ask_llm_timeout_ms, @default_llm_timeout_ms)
 
     model =
@@ -192,6 +231,11 @@ defmodule BotArmyGeneral.AskOrchestrator do
       end)
       |> Enum.join("\n")
 
+    mcp_lines =
+      mcp_tools
+      |> Enum.map(fn t -> "- #{t["name"]}: #{t["description"] || "(no description)"}" end)
+      |> Enum.join("\n")
+
     prompt = """
       You are the Bot Army general-purpose orchestrator. The user asked something outside specialist bots.
 
@@ -204,6 +248,9 @@ defmodule BotArmyGeneral.AskOrchestrator do
       Suggested skills to install (not yet in tenant DB):
       #{if suggest_lines == "", do: "(none)", else: suggest_lines}
 
+      Available MCP tools (sandboxed execution):
+      #{if mcp_lines == "", do: "(none available)", else: mcp_lines}
+
       Relevant installed skill excerpts:
       #{if skill_context == "", do: "(none matched)", else: skill_context}
 
@@ -211,6 +258,7 @@ defmodule BotArmyGeneral.AskOrchestrator do
       - Answer the question helpfully and honestly.
       - If a playbook skill applies (e.g. Playwright), explain steps and note if a browser worker is required.
       - If a skill is in "Suggested skills to install", tell the user the slug and that they need a skills_bot migration/seed.
+      - If an MCP tool is relevant, mention it by name and describe what it would do. Do not claim tool output unless you have it.
       - Do not claim you ran Playwright or booked a flight unless tool output says so.
     """
 

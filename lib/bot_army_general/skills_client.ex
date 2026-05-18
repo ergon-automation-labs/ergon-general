@@ -4,7 +4,7 @@ defmodule BotArmyGeneral.SkillsClient do
   alias BotArmyRuntime.NATS.Publisher
 
   @default_tenant_id "00000000-0000-0000-0000-000000000001"
-  @skills_timeout_ms 12_000
+  @skills_timeout_ms 30_000
 
   def list_installed(tenant_id) do
     request("bot.army.skills.content.list", %{"tenant_id" => tenant_id})
