@@ -63,6 +63,18 @@ defmodule BotArmyGeneral.McpSandbox do
     end
   end
 
+  @doc "Suggest MCP tools from external catalogs (discovery, no sandbox restriction)."
+  @spec catalog_suggest(String.t(), String.t(), integer()) :: {:ok, map()} | {:error, term()}
+  def catalog_suggest(query, tenant_id \\ "default", limit \\ 8) do
+    McpClient.catalog_suggest(query, tenant_id, limit)
+  end
+
+  @doc "Register an MCP tool for a tenant (administration, no sandbox restriction)."
+  @spec register_tool(String.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def register_tool(slug, tenant_id \\ "default", config \\ %{}) do
+    McpClient.register_tool(slug, tenant_id, config)
+  end
+
   # ---
 
   defp allowed?(tool_name) do

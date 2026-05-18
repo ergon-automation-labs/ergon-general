@@ -29,6 +29,8 @@ defmodule BotArmyGeneral.AskOrchestrator do
       auto_invoke = truthy?(Map.get(query, "auto_invoke_skill", false))
 
       mcp_tools = fetch_mcp_tools()
+      mcp_suggestions = fetch_mcp_suggestions(tenant_id, user_query)
+      auto_register = truthy?(Map.get(query, "auto_register_mcp", false))
 
       with {:ok, installed} <- fetch_installed(tenant_id),
            {:ok, suggestions} <- fetch_suggestions(tenant_id, user_query),
@@ -43,8 +45,11 @@ defmodule BotArmyGeneral.AskOrchestrator do
                suggestions,
                skill_context,
                mcp_tools,
+               mcp_suggestions,
                query
              ) do
+        actions = maybe_auto_register_mcp(auto_register, tenant_id, mcp_suggestions, actions)
+
         {:ok,
          %{
            "ok" => true,
@@ -53,14 +58,24 @@ defmodule BotArmyGeneral.AskOrchestrator do
            "matched_skills" => Enum.map(matched, & &1["slug"]),
            "suggested_installs" => Map.get(suggestions, "suggestions", []),
            "actions" => actions,
-           "mcp_tools_available" => length(mcp_tools)
+           "mcp_tools_available" => length(mcp_tools),
+           "mcp_suggestions" => length(mcp_suggestions)
          }}
       else
         {:error, {:installed_list_failed, _reason}} ->
           Logger.warning("[GeneralPurpose] skills unavailable, falling back to direct LLM")
 
           with {:ok, answer} <-
-                 llm_answer(user_query, [], [], %{"suggestions" => []}, "", mcp_tools, query) do
+                 llm_answer(
+                   user_query,
+                   [],
+                   [],
+                   %{"suggestions" => []},
+                   "",
+                   mcp_tools,
+                   mcp_suggestions,
+                   query
+                 ) do
             {:ok,
              %{
                "ok" => true,
@@ -69,7 +84,8 @@ defmodule BotArmyGeneral.AskOrchestrator do
                "matched_skills" => [],
                "suggested_installs" => [],
                "actions" => [%{"type" => "fallback", "note" => "skills_bot unavailable"}],
-               "mcp_tools_available" => length(mcp_tools)
+               "mcp_tools_available" => length(mcp_tools),
+               "mcp_suggestions" => length(mcp_suggestions)
              }}
           else
             {:error, llm_reason} ->
@@ -211,7 +227,53 @@ defmodule BotArmyGeneral.AskOrchestrator do
     end
   end
 
-  defp llm_answer(user_query, matched, _installed, suggestions, skill_context, mcp_tools, query) do
+  defp fetch_mcp_suggestions(tenant_id, user_query) do
+    case McpSandbox.catalog_suggest(user_query, tenant_id, 5) do
+      {:ok, %{"suggestions" => suggestions}} when is_list(suggestions) -> suggestions
+      _ -> []
+    end
+  end
+
+  defp maybe_auto_register_mcp(false, _tenant_id, _suggestions, actions), do: actions
+
+  defp maybe_auto_register_mcp(true, tenant_id, suggestions, actions) do
+    registered =
+      suggestions
+      |> Enum.filter(&(&1["trust_tier"] == "official"))
+      |> Enum.take(1)
+      |> Enum.map(fn tool ->
+        slug = tool["slug"]
+
+        case McpSandbox.register_tool(slug, tenant_id) do
+          {:ok, _} ->
+            %{
+              "type" => "mcp_auto_registered",
+              "slug" => slug,
+              "note" => "Auto-registered official MCP tool"
+            }
+
+          {:error, reason} ->
+            %{
+              "type" => "mcp_auto_register_failed",
+              "slug" => slug,
+              "reason" => inspect(reason)
+            }
+        end
+      end)
+
+    actions ++ registered
+  end
+
+  defp llm_answer(
+         user_query,
+         matched,
+         _installed,
+         suggestions,
+         skill_context,
+         mcp_tools,
+         mcp_suggestions,
+         query
+       ) do
     timeout = Application.get_env(:bot_army_general, :ask_llm_timeout_ms, @default_llm_timeout_ms)
 
     model =
@@ -236,6 +298,16 @@ defmodule BotArmyGeneral.AskOrchestrator do
       |> Enum.map(fn t -> "- #{t["name"]}: #{t["description"] || "(no description)"}" end)
       |> Enum.join("\n")
 
+    mcp_suggest_lines =
+      mcp_suggestions
+      |> Enum.take(5)
+      |> Enum.map(fn s ->
+        tier = s["trust_tier"] || "unknown"
+        install = s["install_hint"] || "See documentation"
+        "- #{s["slug"]} [#{tier}]: #{s["description"] || ""} (install: #{install})"
+      end)
+      |> Enum.join("\n")
+
     prompt = """
       You are the Bot Army general-purpose orchestrator. The user asked something outside specialist bots.
 
@@ -251,6 +323,9 @@ defmodule BotArmyGeneral.AskOrchestrator do
       Available MCP tools (sandboxed execution):
       #{if mcp_lines == "", do: "(none available)", else: mcp_lines}
 
+      Suggested MCP tools from external catalogs (not yet installed):
+      #{if mcp_suggest_lines == "", do: "(none found)", else: mcp_suggest_lines}
+
       Relevant installed skill excerpts:
       #{if skill_context == "", do: "(none matched)", else: skill_context}
 
@@ -259,6 +334,7 @@ defmodule BotArmyGeneral.AskOrchestrator do
       - If a playbook skill applies (e.g. Playwright), explain steps and note if a browser worker is required.
       - If a skill is in "Suggested skills to install", tell the user the slug and that they need a skills_bot migration/seed.
       - If an MCP tool is relevant, mention it by name and describe what it would do. Do not claim tool output unless you have it.
+      - If a suggested external MCP tool looks useful, mention it by slug and trust tier. Do not claim you installed it.
       - Do not claim you ran Playwright or booked a flight unless tool output says so.
     """
 

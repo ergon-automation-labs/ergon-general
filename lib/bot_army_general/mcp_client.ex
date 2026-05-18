@@ -10,6 +10,8 @@ defmodule BotArmyGeneral.McpClient do
 
   @status_subject "bot_army.mcp.status"
   @execute_subject "bot_army.mcp.tools.execute"
+  @catalog_suggest_subject "bot_army.mcp.catalog.suggest"
+  @tools_register_subject "bot_army.mcp.tools.register"
   @tool_timeout_ms 15_000
 
   @doc "List all available MCP tools from the gateway."
@@ -24,6 +26,36 @@ defmodule BotArmyGeneral.McpClient do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  @doc "Suggest MCP tools from canonical + external catalogs based on a query."
+  @spec catalog_suggest(String.t(), String.t(), integer()) :: {:ok, map()} | {:error, term()}
+  def catalog_suggest(query, tenant_id \\ "default", limit \\ 8) do
+    payload = %{
+      "query" => query,
+      "tenant_id" => tenant_id,
+      "limit" => limit
+    }
+
+    case Publisher.request(@catalog_suggest_subject, payload, timeout_ms: @tool_timeout_ms) do
+      {:ok, resp} when is_map(resp) -> {:ok, resp}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Register an MCP tool for a tenant."
+  @spec register_tool(String.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def register_tool(slug, tenant_id \\ "default", config \\ %{}) do
+    payload = %{
+      "slug" => slug,
+      "tenant_id" => tenant_id,
+      "config" => config
+    }
+
+    case Publisher.request(@tools_register_subject, payload, timeout_ms: @tool_timeout_ms) do
+      {:ok, resp} when is_map(resp) -> {:ok, resp}
+      {:error, reason} -> {:error, reason}
     end
   end
 
