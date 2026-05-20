@@ -36,9 +36,10 @@ defmodule BotArmyGeneral.McpSandbox do
     if allowed?(tool_name) do
       audit(tenant_id, tool_name, params)
 
-      with {:ok, result} <- McpClient.execute_tool(tool_name, params) do
-        {:ok, result}
-      else
+      case McpClient.execute_tool(tool_name, params) do
+        {:ok, result} ->
+          {:ok, result}
+
         {:error, reason} ->
           Logger.warning("[McpSandbox] #{tool_name} failed: #{inspect(reason)}")
           {:error, reason}

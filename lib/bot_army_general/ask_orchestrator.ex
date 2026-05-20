@@ -281,32 +281,30 @@ defmodule BotArmyGeneral.AskOrchestrator do
         Application.get_env(:bot_army_general, :ask_default_model, "auto")
 
     installed_lines =
-      matched
-      |> Enum.map(fn s -> "- #{s["slug"]}: #{s["description"] || "(no description)"}" end)
-      |> Enum.join("\n")
+      Enum.map_join(matched, "\n", fn s ->
+        "- #{s["slug"]}: #{s["description"] || "(no description)"}"
+      end)
 
     suggest_lines =
       (Map.get(suggestions, "suggestions", []) || [])
       |> Enum.take(3)
-      |> Enum.map(fn s ->
+      |> Enum.map_join("\n", fn s ->
         "- #{s["slug"]}: #{s["description"] || ""} (install: #{s["install_hint"] || "skills_bot migration/seed"})"
       end)
-      |> Enum.join("\n")
 
     mcp_lines =
-      mcp_tools
-      |> Enum.map(fn t -> "- #{t["name"]}: #{t["description"] || "(no description)"}" end)
-      |> Enum.join("\n")
+      Enum.map_join(mcp_tools, "\n", fn t ->
+        "- #{t["name"]}: #{t["description"] || "(no description)"}"
+      end)
 
     mcp_suggest_lines =
       mcp_suggestions
       |> Enum.take(5)
-      |> Enum.map(fn s ->
+      |> Enum.map_join("\n", fn s ->
         tier = s["trust_tier"] || "unknown"
         install = s["install_hint"] || "See documentation"
         "- #{s["slug"]} [#{tier}]: #{s["description"] || ""} (install: #{install})"
       end)
-      |> Enum.join("\n")
 
     prompt = """
       You are the Bot Army general-purpose orchestrator. The user asked something outside specialist bots.
