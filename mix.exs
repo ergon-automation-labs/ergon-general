@@ -28,7 +28,7 @@ defmodule BotArmyGeneral.MixProject do
 
   defp deps do
     [
-      {:bot_army_core, path: "../bot_army_core"},
+      {:bot_army_library_core, path: "../bot_army_library_core"},
       {:bot_army_runtime, path: "../bot_army_runtime", override: true},
       {:jason, "~> 1.4"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
