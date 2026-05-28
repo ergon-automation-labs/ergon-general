@@ -339,7 +339,8 @@ defmodule BotArmyGeneral.AskOrchestrator do
     llm_payload = %{
       "text" => String.trim(prompt),
       "model" => model,
-      "prompt_id" => BotArmyGeneral.UUID.v4()
+      "prompt_id" => BotArmyGeneral.UUID.v4(),
+      "allow_cloud_when_sensitive" => true
     }
 
     case Publisher.request(@llm_subject, llm_payload, timeout_ms: timeout) do
