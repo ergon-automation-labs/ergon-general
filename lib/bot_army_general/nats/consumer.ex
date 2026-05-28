@@ -60,7 +60,16 @@ defmodule BotArmyGeneral.NATS.Consumer do
 
         case subscribe_all(conn, @subscribe_subjects) do
           {:ok, subs} ->
-            BotArmyRuntime.Registry.register("bot_army_general_purpose", @subjects, @version)
+            deployment_status =
+              Application.get_env(:bot_army_general, :deployment_status, "experimental")
+
+            BotArmyRuntime.Registry.register(
+              "bot_army_general_purpose",
+              @subjects,
+              @version,
+              deployment_status
+            )
+
             Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
             Process.send_after(self(), :publish_health, 1_000)
             Logger.info("[GeneralPurpose] Subscribed to ask + operator.complete")
