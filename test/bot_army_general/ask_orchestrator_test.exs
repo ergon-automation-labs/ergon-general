@@ -47,6 +47,7 @@ defmodule BotArmyGeneral.AskOrchestratorTest do
     assert match?({:ok, _}, result)
   end
 
+  @tag :integration
   test "response includes metadata fields" do
     {:ok, response} = AskOrchestrator.handle(%{"query" => "simple test"})
 
@@ -59,11 +60,13 @@ defmodule BotArmyGeneral.AskOrchestratorTest do
     assert Map.has_key?(response, "mcp_suggestions")
   end
 
+  @tag :integration
   test "matched_skills is always a list" do
     {:ok, response} = AskOrchestrator.handle(%{"query" => "test"})
     assert is_list(response["matched_skills"])
   end
 
+  @tag :integration
   test "actions is always a list" do
     {:ok, response} = AskOrchestrator.handle(%{"query" => "test"})
     assert is_list(response["actions"])
