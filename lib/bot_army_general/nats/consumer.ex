@@ -54,16 +54,16 @@ defmodule BotArmyGeneral.NATS.Consumer do
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
+    case GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
       {:ok, conn} ->
-        BotArmyRuntime.NATS.Connection.subscribe_to_status()
+        BotArmyLibraryRuntime.NATS.Connection.subscribe_to_status()
 
         case subscribe_all(conn, @subscribe_subjects) do
           {:ok, subs} ->
             deployment_status =
               Application.get_env(:bot_army_general, :deployment_status, "experimental")
 
-            BotArmyRuntime.Registry.register(
+            BotArmyLibraryRuntime.Registry.register(
               "bot_army_general_purpose",
               @subjects,
               @version,
@@ -100,7 +100,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
   @impl true
   def handle_info(:registry_heartbeat, state) do
     if state.subscriptions != [] do
-      BotArmyRuntime.Registry.register("bot_army_general_purpose", @subjects, @version)
+      BotArmyLibraryRuntime.Registry.register("bot_army_general_purpose", @subjects, @version)
       Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
     end
 
@@ -109,7 +109,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
 
   @impl true
   def handle_info({:msg, msg}, state) do
-    BotArmyRuntime.Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers, []), fn ->
+    BotArmyLibraryRuntime.Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers, []), fn ->
       try do
         query = decode_body(msg.body)
         response = dispatch(msg.topic, query) |> maybe_deprecate(msg.topic)
@@ -184,7 +184,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
   end
 
   defp publish_json(payload, subject) do
-    with {:ok, conn} <- GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
+    with {:ok, conn} <- GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
       Gnat.pub(conn, subject, Jason.encode!(payload))
     end
   end

@@ -6,7 +6,7 @@ defmodule BotArmyGeneral.McpClient do
   `bot_army.mcp.tools.execute` for sandboxed invocation.
   """
 
-  alias BotArmyRuntime.NATS.Publisher
+  alias BotArmyLibraryRuntime.NATS.Publisher
 
   @status_subject "bot_army.mcp.status"
   @execute_subject "bot_army.mcp.tools.execute"

@@ -1,7 +1,7 @@
 defmodule BotArmyGeneral.SkillsClient do
   @moduledoc false
 
-  alias BotArmyRuntime.NATS.Publisher
+  alias BotArmyLibraryRuntime.NATS.Publisher
 
   @default_tenant_id "00000000-0000-0000-0000-000000000001"
   @skills_timeout_ms 30_000

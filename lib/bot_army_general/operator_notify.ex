@@ -7,7 +7,7 @@ defmodule BotArmyGeneral.OperatorNotify do
 
   require Logger
 
-  alias BotArmyRuntime.NATS.Publisher
+  alias BotArmyLibraryRuntime.NATS.Publisher
 
   @schema_version "1.0"
   @para_subject "para.capture.append"

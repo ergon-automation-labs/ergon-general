@@ -6,7 +6,7 @@ defmodule BotArmyGeneral.AskOrchestrator do
   require Logger
 
   alias BotArmyGeneral.{McpSandbox, SkillsClient}
-  alias BotArmyRuntime.NATS.Publisher
+  alias BotArmyLibraryRuntime.NATS.Publisher
 
   @llm_subject "llm.prompt.submit"
   @default_llm_timeout_ms 120_000

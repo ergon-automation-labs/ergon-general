@@ -1,7 +1,7 @@
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 MIX ?= mix
 
-.PHONY: setup help deps test format clean release publish-release setup-hooks push-and-publish logs
+.PHONY: setup help deps test format clean release publish-release setup-hooks push-and-publish logs bump-version compile
 
 help:
 	@echo "Bot Army — General-purpose orchestrator"
@@ -16,8 +16,20 @@ setup-hooks:
 	@git config core.hooksPath git-hooks
 	@echo "✓ Git hooks (core.hooksPath = git-hooks)"
 
+compile:
+	@LOG_FILE="/tmp/compile-general-$$(date +%s).log"; \
+	echo "Compiling general and logging to $$LOG_FILE..."; \
+	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
+	echo "✓ Compilation log: $$LOG_FILE"
+
 deps:
 	$(MIX) deps.get
+
+compile:
+	@LOG_FILE="/tmp/compile-general-$$(date +%s).log"; \
+	echo "Compiling general and logging to $$LOG_FILE..."; \
+	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
+	echo "✓ Compilation log: $$LOG_FILE"
 
 test:
 	$(MIX) test
@@ -57,3 +69,10 @@ push-and-publish:
 
 logs:
 	@$(SCRIPTS_DIRECTORY)/tail_bot_log.sh
+
+bump-version:
+	@if [ -z "$(BUMP)" ]; then echo "Usage: make bump-version BUMP=major|minor|patch"; exit 1; fi
+	@OLD=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
+	bash $(SCRIPTS_DIRECTORY)/bump_version.sh mix.exs $(BUMP) > /dev/null; \
+	NEW=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
+	echo "✓ Bumped: $$OLD → $$NEW"
