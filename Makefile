@@ -25,12 +25,6 @@ compile:
 deps:
 	$(MIX) deps.get
 
-compile:
-	@LOG_FILE="/tmp/compile-general-$$(date +%s).log"; \
-	echo "Compiling general and logging to $$LOG_FILE..."; \
-	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
-	echo "✓ Compilation log: $$LOG_FILE"
-
 test:
 	$(MIX) test
 
