@@ -17,10 +17,7 @@ setup-hooks:
 	@echo "✓ Git hooks (core.hooksPath = git-hooks)"
 
 _compile-impl:
-	@LOG_FILE="/tmp/compile-general-$$(date +%s).log"; \
-	echo "Compiling general and logging to $$LOG_FILE..."; \
-	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
-	echo "✓ Compilation log: $$LOG_FILE"
+	$(MIX) compile
 
 deps:
 	$(MIX) deps.get
