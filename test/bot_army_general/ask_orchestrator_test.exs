@@ -34,6 +34,7 @@ defmodule BotArmyGeneral.AskOrchestratorTest do
              AskOrchestrator.handle(nil)
   end
 
+  @tag :integration
   test "uses 'text' field as fallback for query" do
     # Should not error even though 'query' is missing
     # (The actual behavior depends on whether text field gets picked up)
@@ -41,6 +42,7 @@ defmodule BotArmyGeneral.AskOrchestratorTest do
     assert match?({:ok, _}, result)
   end
 
+  @tag :integration
   test "default tenant when not specified" do
     # Should use default tenant and proceed (will likely fail on skills_bot unavailable)
     result = AskOrchestrator.handle(%{"query" => "test"})
@@ -72,11 +74,13 @@ defmodule BotArmyGeneral.AskOrchestratorTest do
     assert is_list(response["actions"])
   end
 
+  @tag :integration
   test "handles custom model option" do
     result = AskOrchestrator.handle(%{"query" => "test", "model" => "custom-model"})
     assert match?({:ok, _}, result)
   end
 
+  @tag :integration
   test "handles allow_cloud_when_sensitive flag" do
     result =
       AskOrchestrator.handle(%{
