@@ -50,41 +50,106 @@ defmodule BotArmyGeneral.NATS.Consumer do
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @impl true
-  def init(_opts), do: {:ok, %{subscriptions: []}, {:continue, :connect}}
+  def init(_opts) do
+    state = %{
+      subscriptions: [],
+      conn: nil,
+      # LeaderElection announces the real role shortly after startup; defaulting
+      # to standby means a not-yet-elected node never answers business traffic.
+      role: :standby
+    }
+
+    {:ok, state, {:continue, :connect}}
+  end
 
   @impl true
   def handle_continue(:connect, state) do
     case GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
       {:ok, conn} ->
         BotArmyLibraryRuntime.NATS.Connection.subscribe_to_status()
+        Process.send_after(self(), :publish_health, 1_000)
+        state = %{state | conn: conn}
 
-        case subscribe_all(conn, @subscribe_subjects) do
-          {:ok, subs} ->
-            deployment_status =
-              Application.get_env(:bot_army_general, :deployment_status, "experimental")
-
-            BotArmyLibraryRuntime.Registry.register(
-              "bot_army_general_purpose",
-              @subjects,
-              @version,
-              deployment_status
-            )
-
-            Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
-            Process.send_after(self(), :publish_health, 1_000)
-            Logger.info("[GeneralPurpose] Subscribed to ask + operator.complete")
-            {:noreply, %{state | subscriptions: subs}}
-
-          {:error, subject, reason} ->
-            Logger.error("[GeneralPurpose] Subscribe failed #{subject}: #{inspect(reason)}")
-            Process.send_after(self(), :reconnect, @reconnect_delay_ms)
-            {:noreply, state}
+        if state.role == :primary do
+          subscribe_business_subjects(state)
+        else
+          Logger.info("[GeneralPurpose] standby — not subscribing to business subjects")
+          {:noreply, register_with_role(%{state | subscriptions: []})}
         end
 
       {:error, _} ->
         Process.send_after(self(), :reconnect, @reconnect_delay_ms)
         {:noreply, state}
     end
+  end
+
+  @doc """
+  Called by `BotArmyLibraryRuntime.LeaderElection`'s `on_role_change` callback.
+  """
+  def leader_role_changed(role) when role in [:primary, :standby] do
+    GenServer.cast(__MODULE__, {:leader_role_changed, role})
+  end
+
+  @impl true
+  def handle_cast({:leader_role_changed, :primary}, %{conn: nil} = state) do
+    Logger.warning(
+      "[GeneralPurpose] designated PRIMARY, but NATS not connected yet — will subscribe once connected"
+    )
+
+    {:noreply, %{state | role: :primary}}
+  end
+
+  def handle_cast({:leader_role_changed, :primary}, %{subscriptions: []} = state) do
+    Logger.warning("[GeneralPurpose] becoming PRIMARY — subscribing to business subjects")
+    subscribe_business_subjects(%{state | role: :primary})
+  end
+
+  def handle_cast({:leader_role_changed, :primary}, state) do
+    {:noreply, %{state | role: :primary}}
+  end
+
+  def handle_cast({:leader_role_changed, :standby}, state) do
+    Logger.warning("[GeneralPurpose] becoming STANDBY — unsubscribing from business subjects")
+
+    if state.conn do
+      Enum.each(state.subscriptions, &Gnat.unsub(state.conn, &1))
+    end
+
+    {:noreply, register_with_role(%{state | role: :standby, subscriptions: []})}
+  end
+
+  defp subscribe_business_subjects(state) do
+    case subscribe_all(state.conn, @subscribe_subjects) do
+      {:ok, subs} ->
+        Logger.info("[GeneralPurpose] Subscribed to ask + operator.complete")
+        {:noreply, register_with_role(%{state | subscriptions: subs})}
+
+      {:error, subject, reason} ->
+        Logger.error("[GeneralPurpose] Subscribe failed #{subject}: #{inspect(reason)}")
+        Process.send_after(self(), :reconnect, @reconnect_delay_ms)
+        {:noreply, state}
+    end
+  end
+
+  # Registers with the fleet Registry, reflecting the current role in
+  # deployment_status so a standby node is visible but clearly not serving.
+  defp register_with_role(state) do
+    deployment_status =
+      if state.role == :primary do
+        Application.get_env(:bot_army_general, :deployment_status, "experimental")
+      else
+        "standby"
+      end
+
+    BotArmyLibraryRuntime.Registry.register(
+      "bot_army_general_purpose",
+      @subjects,
+      @version,
+      deployment_status
+    )
+
+    Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
+    state
   end
 
   @impl true
@@ -99,12 +164,7 @@ defmodule BotArmyGeneral.NATS.Consumer do
 
   @impl true
   def handle_info(:registry_heartbeat, state) do
-    if state.subscriptions != [] do
-      BotArmyLibraryRuntime.Registry.register("bot_army_general_purpose", @subjects, @version)
-      Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
-    end
-
-    {:noreply, state}
+    {:noreply, register_with_role(state)}
   end
 
   @impl true
@@ -184,7 +244,8 @@ defmodule BotArmyGeneral.NATS.Consumer do
   end
 
   defp publish_json(payload, subject) do
-    with {:ok, conn} <- GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
+    with {:ok, conn} <-
+           GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
       Gnat.pub(conn, subject, Jason.encode!(payload))
     end
   end
