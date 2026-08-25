@@ -24,7 +24,7 @@ defmodule BotArmyGeneral.Application do
         # while the consumer is still connecting (not yet subscribed either way).
         {BotArmyLibraryRuntime.LeaderElection,
          service: "general",
-         node_name: System.get_env("LEADER_NODE_NAME", "unknown"),
+         node_name: System.get_env("NODE_NAME", "unknown"),
          default_role: BotArmyLibraryRuntime.LeaderElection.role_from_env("GENERAL_NODE_ROLE"),
          on_role_change: {BotArmyGeneral.NATS.Consumer, :leader_role_changed, []}},
         BotArmyGeneral.NATS.Consumer
