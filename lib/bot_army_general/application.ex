@@ -13,6 +13,7 @@ defmodule BotArmyGeneral.Application do
     children =
       []
       |> maybe_add_consumer()
+      |> maybe_add_pulse_publisher()
 
     opts = [strategy: :one_for_one, name: BotArmyGeneral.Supervisor]
     Supervisor.start_link(children, opts)
@@ -33,6 +34,18 @@ defmodule BotArmyGeneral.Application do
            parse_role(BotArmyLibraryRuntime.ConfigLoader.get("GENERAL_NODE_ROLE", "primary")),
          on_role_change: {BotArmyGeneral.NATS.Consumer, :leader_role_changed, []}},
         BotArmyGeneral.NATS.Consumer
+        | children
+      ]
+    end
+  end
+
+  defp maybe_add_pulse_publisher(children) do
+    if @env == :test do
+      children
+    else
+      [
+        {BotArmyLibraryRuntime.HealthPulsePublisher,
+         [app_name: :bot_army_general, service: "general"]}
         | children
       ]
     end
