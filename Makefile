@@ -1,5 +1,4 @@
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
-MIX ?= mix
 
 .PHONY: setup help deps test format clean release publish-release setup-hooks push-and-publish logs compile
 
