@@ -11,10 +11,6 @@ help:
 setup: deps setup-hooks
 	@echo "✓ Setup complete"
 
-setup-hooks:
-	@git config core.hooksPath git-hooks
-	@echo "✓ Git hooks (core.hooksPath = git-hooks)"
-
 _compile-impl:
 	$(MIX) compile
 
