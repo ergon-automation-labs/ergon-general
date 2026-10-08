@@ -50,6 +50,7 @@ publish-release: release
 	  echo "gh not installed; tarball only: $$TARBALL"; \
 	fi
 
+	@$(MAKE) publish-deploy-event TARGET=mini
 push-and-publish:
 	@git push && $(MAKE) publish-release
 
